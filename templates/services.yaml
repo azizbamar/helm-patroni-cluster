@@ -18,8 +18,7 @@ spec:
   selector:
     {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}
 ---
-# ── Primary Service (read-write) ───────────────────────────────────
-# Patroni sets the label "role: master" on the primary pod
+# ── Primary Service — selects all patroni pods (Spilo sets endpoint via API) ──
 apiVersion: v1
 kind: Service
 metadata:
@@ -27,9 +26,6 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "patroni-cluster.labels" . | nindent 4 }}
-    patroni/role: primary
-  annotations:
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "false"
 spec:
   type: {{ .Values.service.primary.type }}
   ports:
@@ -38,9 +34,8 @@ spec:
       targetPort: 5432
   selector:
     {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}
-    role: master   # Patroni labels the primary pod with role=master
 ---
-# ── Replica Service (read-only) ────────────────────────────────────
+# ── Replica Service ────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
@@ -48,7 +43,6 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "patroni-cluster.labels" . | nindent 4 }}
-    patroni/role: replica
 spec:
   type: {{ .Values.service.replica.type }}
   ports:
@@ -57,7 +51,6 @@ spec:
       targetPort: 5432
   selector:
     {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}
-    role: replica  # Patroni labels replica pods with role=replica
 ---
 # ── Patroni REST API Service ────────────────────────────────────────
 apiVersion: v1
