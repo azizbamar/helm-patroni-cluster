@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+data:
+  patroni.yaml: |
+    scope: {{ .Values.patroni.scope }}
+    namespace: /{{ .Release.Namespace }}/
+    name: ${POD_NAME}
+
+    restapi:
+      listen: 0.0.0.0:8008
+      connect_address: ${POD_IP}:8008
+
+    etcd3:
+      hosts: {{ include "patroni-cluster.etcdEndpoints" . }}
+
+    bootstrap:
+      dcs:
+        ttl: {{ .Values.patroni.ttl }}
+        loop_wait: {{ .Values.patroni.loop_wait }}
+        retry_timeout: {{ .Values.patroni.retry_timeout }}
+        maximum_lag_on_failover: {{ .Values.patroni.maximum_lag_on_failover }}
+        postgresql:
+          use_pg_rewind: true
+          use_slots: true
+          parameters:
+            {{- range $k, $v := .Values.postgresql.parameters }}
+            {{ $k }}: {{ $v }}
+            {{- end }}
+
+      initdb:
+        - encoding: UTF8
+        - data-checksums
+
+      pg_hba:
+        - host replication replicator 0.0.0.0/0 md5
+        - host all all 0.0.0.0/0 md5
+
+      users:
+        admin:
+          password: ${POSTGRES_PASSWORD}
+          options:
+            - createrole
+            - createdb
+
+    postgresql:
+      listen: 0.0.0.0:5432
+      connect_address: ${POD_IP}:5432
+      data_dir: /var/lib/postgresql/data/pgdata
+      bin_dir: /usr/lib/postgresql/15/bin
+      authentication:
+        replication:
+          username: replicator
+          password: ${REPLICATION_PASSWORD}
+        superuser:
+          username: postgres
+          password: ${POSTGRES_PASSWORD}
+      parameters:
+        {{- range $k, $v := .Values.postgresql.parameters }}
+        {{ $k }}: {{ $v }}
+        {{- end }}
+
+    tags:
+      nofailover: false
+      noloadbalance: false
+      clonefrom: false
+      nosync: false

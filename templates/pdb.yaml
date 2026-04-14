@@ -1,0 +1,29 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# PDB for Patroni PostgreSQL pods
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "patroni-cluster.selectorLabels" . | nindent 6 }}
+---
+# PDB for etcd pods
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-etcd
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.etcdLabels" . | nindent 4 }}
+spec:
+  minAvailable: 2   # etcd quorum requires majority alive
+  selector:
+    matchLabels:
+      {{- include "patroni-cluster.etcdLabels" . | nindent 6 }}
+{{- end }}

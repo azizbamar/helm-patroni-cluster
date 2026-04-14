@@ -1,0 +1,105 @@
+{{- if .Values.networkPolicy.enabled }}
+# ── NetworkPolicy: Patroni pods ────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "patroni-cluster.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow PostgreSQL from permitted namespaces
+    - from:
+        {{- range .Values.networkPolicy.allowedNamespaceLabels }}
+        - namespaceSelector:
+            matchLabels:
+              {{ . }}
+        {{- end }}
+        # Allow intra-cluster communication (replication)
+        - podSelector:
+            matchLabels:
+              {{- include "patroni-cluster.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: 5432
+    # Allow Patroni REST API from all pods in namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 8008
+  egress:
+    # Allow outbound to etcd
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "patroni-cluster.etcdLabels" . | nindent 14 }}
+      ports:
+        - port: 2379
+    # Allow intra-cluster PostgreSQL replication
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "patroni-cluster.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: 5432
+        - port: 8008
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ── NetworkPolicy: etcd pods ───────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-etcd
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.etcdLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "patroni-cluster.etcdLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from Patroni pods
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "patroni-cluster.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: 2379
+    # Allow peer communication between etcd pods
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "patroni-cluster.etcdLabels" . | nindent 14 }}
+      ports:
+        - port: 2379
+        - port: 2380
+  egress:
+    # Allow etcd peer traffic
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "patroni-cluster.etcdLabels" . | nindent 14 }}
+      ports:
+        - port: 2379
+        - port: 2380
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+{{- end }}

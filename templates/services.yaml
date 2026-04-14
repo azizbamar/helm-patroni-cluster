@@ -1,0 +1,77 @@
+# ── Headless Service (for StatefulSet DNS) ─────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: postgresql
+      port: 5432
+    - name: patroni-api
+      port: 8008
+  selector:
+    {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}
+---
+# ── Primary Service (read-write) ───────────────────────────────────
+# Patroni sets the label "role: master" on the primary pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-primary
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+    patroni/role: primary
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "false"
+spec:
+  type: {{ .Values.service.primary.type }}
+  ports:
+    - name: postgresql
+      port: {{ .Values.service.primary.port }}
+      targetPort: 5432
+  selector:
+    {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}
+    role: master   # Patroni labels the primary pod with role=master
+---
+# ── Replica Service (read-only) ────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-replica
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+    patroni/role: replica
+spec:
+  type: {{ .Values.service.replica.type }}
+  ports:
+    - name: postgresql
+      port: {{ .Values.service.replica.port }}
+      targetPort: 5432
+  selector:
+    {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}
+    role: replica  # Patroni labels replica pods with role=replica
+---
+# ── Patroni REST API Service ────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patroni-cluster.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patroni-cluster.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.api.type }}
+  ports:
+    - name: patroni-api
+      port: {{ .Values.service.api.port }}
+      targetPort: 8008
+  selector:
+    {{- include "patroni-cluster.selectorLabels" . | nindent 4 }}

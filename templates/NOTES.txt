@@ -1,0 +1,54 @@
+╔══════════════════════════════════════════════════════╗
+║       Patroni HA PostgreSQL Cluster Deployed         ║
+╚══════════════════════════════════════════════════════╝
+
+Cluster: {{ .Values.patroni.scope }}
+Nodes:   {{ .Values.replicaCount }} (1 primary + {{ sub .Values.replicaCount 1 }} replicas)
+etcd:    {{ .Values.etcd.replicaCount }} nodes (embedded)
+
+── Connection Endpoints ──────────────────────────────
+
+  Primary (read-write):
+    Host: {{ include "patroni-cluster.fullname" . }}-primary.{{ .Release.Namespace }}.svc.cluster.local
+    Port: {{ .Values.service.primary.port }}
+
+  Replica (read-only):
+    Host: {{ include "patroni-cluster.fullname" . }}-replica.{{ .Release.Namespace }}.svc.cluster.local
+    Port: {{ .Values.service.replica.port }}
+
+  Patroni REST API:
+    Host: {{ include "patroni-cluster.fullname" . }}-api.{{ .Release.Namespace }}.svc.cluster.local
+    Port: 8008
+
+── Quick Test ────────────────────────────────────────
+
+  1. Check cluster status:
+     kubectl exec -n {{ .Release.Namespace }} \
+       {{ include "patroni-cluster.fullname" . }}-0 -- \
+       patronictl -c /etc/patroni/patroni.yaml list
+
+  2. Connect to primary:
+     kubectl run pg-client --rm -it --image=postgres:15 \
+       --restart=Never -- psql \
+       -h {{ include "patroni-cluster.fullname" . }}-primary \
+       -U postgres -d postgres
+
+  3. Check REST API:
+     kubectl exec -n {{ .Release.Namespace }} \
+       {{ include "patroni-cluster.fullname" . }}-0 -- \
+       curl -s http://localhost:8008/cluster | python3 -m json.tool
+
+── Trigger a Manual Failover ─────────────────────────
+
+  kubectl exec -n {{ .Release.Namespace }} \
+    {{ include "patroni-cluster.fullname" . }}-0 -- \
+    patronictl -c /etc/patroni/patroni.yaml failover \
+    {{ .Values.patroni.scope }} --master <current-leader> --force
+
+── Credentials ───────────────────────────────────────
+
+  Secret: {{ include "patroni-cluster.fullname" . }}-credentials
+  kubectl get secret {{ include "patroni-cluster.fullname" . }}-credentials \
+    -n {{ .Release.Namespace }} -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
+
+⚠  IMPORTANT: Change all default passwords before production use!

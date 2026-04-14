@@ -1,0 +1,13 @@
+apiVersion: v2
+name: patroni-cluster
+description: Production-grade Patroni HA PostgreSQL cluster with embedded etcd on Kubernetes
+type: application
+version: 1.0.0
+appVersion: "15.3"
+keywords:
+  - postgresql
+  - patroni
+  - ha
+  - etcd
+maintainers:
+  - name: platform-team
