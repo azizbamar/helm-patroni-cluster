@@ -21,12 +21,19 @@ spec:
     spec:
       serviceAccountName: {{ include "patroni-cluster.serviceAccountName" . }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 103
       terminationGracePeriodSeconds: 30
       initContainers:
-        # Wait for etcd to be ready before starting Patroni
         - name: wait-for-etcd
           image: busybox:1.36
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           command:
             - sh
             - -c
@@ -39,8 +46,6 @@ spec:
         - name: patroni
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
             - name: postgresql
               containerPort: 5432
@@ -51,89 +56,83 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "patroni-cluster.fullname" . }}-credentials
-                  key: POSTGRES_PASSWORD
-            - name: REPLICATION_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "patroni-cluster.fullname" . }}-credentials
-                  key: REPLICATION_PASSWORD
+            # Spilo / Patroni core
+            - name: SCOPE
+              value: {{ .Values.patroni.scope }}
+            - name: PGROOT
+              value: /home/postgres/pgdata/pgroot
+            - name: PGDATA
+              value: /home/postgres/pgdata/pgroot/data
+            # etcd DCS
+            - name: ETCD3_HOSTS
+              value: "{{ include "patroni-cluster.fullname" . }}-etcd.{{ .Release.Namespace }}.svc.cluster.local:2379"
+            # Superuser
+            - name: PATRONI_SUPERUSER_USERNAME
+              value: postgres
             - name: PATRONI_SUPERUSER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "patroni-cluster.fullname" . }}-credentials
-                  key: PATRONI_SUPERUSER_PASSWORD
+                  key: POSTGRES_PASSWORD
+            # Replication user
+            - name: PATRONI_REPLICATION_USERNAME
+              value: replicator
             - name: PATRONI_REPLICATION_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "patroni-cluster.fullname" . }}-credentials
-                  key: PATRONI_REPLICATION_PASSWORD
+                  key: REPLICATION_PASSWORD
+            # PostgreSQL parameters
+            - name: PATRONI_POSTGRESQL_LISTEN
+              value: "0.0.0.0:5432"
+            - name: PATRONI_RESTAPI_LISTEN
+              value: "0.0.0.0:8008"
+            - name: PATRONI_POSTGRESQL_CONNECT_ADDRESS
+              value: "$(POD_NAME).{{ include "patroni-cluster.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:5432"
+            - name: PATRONI_RESTAPI_CONNECT_ADDRESS
+              value: "$(POD_NAME).{{ include "patroni-cluster.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:8008"
+            - name: PATRONI_NAME
+              value: "$(POD_NAME)"
             - name: PATRONI_KUBERNETES_NAMESPACE
               value: {{ .Release.Namespace }}
             - name: PATRONI_KUBERNETES_LABELS
               value: "{app.kubernetes.io/name: {{ include "patroni-cluster.name" . }}}"
-            - name: PATRONI_SCOPE
-              value: {{ .Values.patroni.scope }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          command:
-            - /bin/bash
-            - -c
-            - |
-              # Substitute environment variables into config
-              export PATRONI_CONFIG=/etc/patroni/patroni.yaml
-              envsubst < /etc/patroni-config/patroni.yaml > $PATRONI_CONFIG
-              exec patroni $PATRONI_CONFIG
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /liveness
               port: 8008
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 15
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 4
           readinessProbe:
             httpGet:
               path: /readiness
               port: 8008
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 4
           volumeMounts:
             - name: pgdata
-              mountPath: /var/lib/postgresql/data
-            - name: patroni-config
-              mountPath: /etc/patroni-config
-            - name: patroni-run
-              mountPath: /etc/patroni
-      volumes:
-        - name: patroni-config
-          configMap:
-            name: {{ include "patroni-cluster.fullname" . }}-config
-        - name: patroni-run
-          emptyDir: {}
+              mountPath: /home/postgres/pgdata
+      volumes: []
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- if .Values.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml .Values.affinity | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:

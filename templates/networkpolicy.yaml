@@ -1,5 +1,4 @@
 {{- if .Values.networkPolicy.enabled }}
-# ── NetworkPolicy: Patroni pods ────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,33 +14,28 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow PostgreSQL from permitted namespaces
     - from:
         {{- range .Values.networkPolicy.allowedNamespaceLabels }}
         - namespaceSelector:
             matchLabels:
-              {{ . }}
+              {{ .key }}: {{ .value }}
         {{- end }}
-        # Allow intra-cluster communication (replication)
         - podSelector:
             matchLabels:
-              {{- include "patroni-cluster.selectorLabels" . | nindent 14 }}
+              {{- include "patroni-cluster.selectorLabels" $ | nindent 14 }}
       ports:
         - port: 5432
-    # Allow Patroni REST API from all pods in namespace
     - from:
         - podSelector: {}
       ports:
         - port: 8008
   egress:
-    # Allow outbound to etcd
     - to:
         - podSelector:
             matchLabels:
               {{- include "patroni-cluster.etcdLabels" . | nindent 14 }}
       ports:
         - port: 2379
-    # Allow intra-cluster PostgreSQL replication
     - to:
         - podSelector:
             matchLabels:
@@ -49,14 +43,12 @@ spec:
       ports:
         - port: 5432
         - port: 8008
-    # Allow DNS
     - ports:
         - port: 53
           protocol: UDP
         - port: 53
           protocol: TCP
 ---
-# ── NetworkPolicy: etcd pods ───────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -72,14 +64,12 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow from Patroni pods
     - from:
         - podSelector:
             matchLabels:
               {{- include "patroni-cluster.selectorLabels" . | nindent 14 }}
       ports:
         - port: 2379
-    # Allow peer communication between etcd pods
     - from:
         - podSelector:
             matchLabels:
@@ -88,7 +78,6 @@ spec:
         - port: 2379
         - port: 2380
   egress:
-    # Allow etcd peer traffic
     - to:
         - podSelector:
             matchLabels:
@@ -96,7 +85,6 @@ spec:
       ports:
         - port: 2379
         - port: 2380
-    # Allow DNS
     - ports:
         - port: 53
           protocol: UDP

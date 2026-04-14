@@ -1,27 +1,19 @@
-# ──────────────────────────────────────────────
-# Patroni HA Cluster – values.yaml
-# ──────────────────────────────────────────────
-
 replicaCount: 3
 
 image:
-  repository: patroni/patroni   # or use spilo: ghcr.io/zalando/spilo-15
-  tag: "3.1.0"
+  repository: ghcr.io/zalando/spilo-15
+  tag: "3.0-p1"
   pullPolicy: IfNotPresent
 
 nameOverride: ""
 fullnameOverride: ""
 
-# ──────────────────────────────────────────────
-# PostgreSQL configuration
-# ──────────────────────────────────────────────
 postgresql:
-  postgresPassword: "changeme"      # superuser password (use secret in prod)
+  postgresPassword: "changeme"
   replicationPassword: "replicapass"
   database: "app"
   username: "appuser"
   password: "apppass"
-
   parameters:
     max_connections: "200"
     shared_buffers: "256MB"
@@ -32,18 +24,13 @@ postgresql:
     max_wal_senders: "10"
     max_replication_slots: "10"
 
-# ──────────────────────────────────────────────
-# Patroni configuration
-# ──────────────────────────────────────────────
 patroni:
   scope: "patroni-cluster"
   namespace: "patroni"
   ttl: 30
   loop_wait: 10
   retry_timeout: 10
-  maximum_lag_on_failover: 1048576   # 1 MB
-
-  # Bootstrap method
+  maximum_lag_on_failover: 1048576
   bootstrap:
     dcs:
       ttl: 30
@@ -60,17 +47,13 @@ patroni:
           max_wal_senders: 10
           max_replication_slots: 10
 
-# ──────────────────────────────────────────────
-# etcd (embedded, deployed as a StatefulSet)
-# ──────────────────────────────────────────────
 etcd:
   enabled: true
   replicaCount: 3
   image:
-    repository: bitnami/etcd
-    tag: "3.5.9"
+    repository: quay.io/coreos/etcd
+    tag: "v3.5.9"
     pullPolicy: IfNotPresent
-
   resources:
     requests:
       cpu: "100m"
@@ -78,23 +61,16 @@ etcd:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
   storage:
     size: 2Gi
-    storageClass: ""   # use cluster default
+    storageClass: "local-path"
 
-# ──────────────────────────────────────────────
-# Storage
-# ──────────────────────────────────────────────
 persistence:
   enabled: true
-  storageClass: ""     # leave empty to use cluster default (gp2/gp3 on EKS, etc.)
+  storageClass: "local-path"
   size: 10Gi
   accessMode: ReadWriteOnce
 
-# ──────────────────────────────────────────────
-# Resource limits
-# ──────────────────────────────────────────────
 resources:
   requests:
     cpu: "500m"
@@ -103,59 +79,33 @@ resources:
     cpu: "2000m"
     memory: "2Gi"
 
-# ──────────────────────────────────────────────
-# Services
-# ──────────────────────────────────────────────
 service:
-  # Primary (read-write) endpoint
   primary:
     type: ClusterIP
     port: 5432
-  # Replica (read-only) endpoint
   replica:
     type: ClusterIP
     port: 5432
-  # Patroni REST API
   api:
     type: ClusterIP
     port: 8008
 
-# ──────────────────────────────────────────────
-# Networking
-# ──────────────────────────────────────────────
 networkPolicy:
   enabled: true
-  # CIDRs allowed to connect to PostgreSQL (e.g. app pods' namespace)
   allowedNamespaceLabels:
-    - kubernetes.io/metadata.name: default
+    - key: kubernetes.io/metadata.name
+      value: default
 
-# ──────────────────────────────────────────────
-# Pod Disruption Budget
-# ──────────────────────────────────────────────
 podDisruptionBudget:
   enabled: true
   minAvailable: 2
 
-# ──────────────────────────────────────────────
-# Affinity / Topology
-# ──────────────────────────────────────────────
-affinity:
-  podAntiAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-            - key: app.kubernetes.io/name
-              operator: In
-              values:
-                - patroni-cluster
-        topologyKey: kubernetes.io/hostname
+# Disabled for single-node cluster
+affinity: {}
 
 tolerations: []
 nodeSelector: {}
 
-# ──────────────────────────────────────────────
-# Security context
-# ──────────────────────────────────────────────
 podSecurityContext:
   fsGroup: 999
   runAsNonRoot: true
@@ -169,24 +119,15 @@ containerSecurityContext:
     drop:
       - ALL
 
-# ──────────────────────────────────────────────
-# Service Account
-# ──────────────────────────────────────────────
 serviceAccount:
   create: true
   annotations: {}
   name: ""
 
-# ──────────────────────────────────────────────
-# Monitoring
-# ──────────────────────────────────────────────
 metrics:
-  enabled: false   # set true if Prometheus is available
+  enabled: false
   image:
     repository: prometheuscommunity/postgres-exporter
     tag: v0.13.2
 
-# ──────────────────────────────────────────────
-# Extra environment variables
-# ──────────────────────────────────────────────
 extraEnv: []
